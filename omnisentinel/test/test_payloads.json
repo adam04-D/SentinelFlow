@@ -1,0 +1,135 @@
+{
+  "test_cases": [
+    {
+      "id": "TC001",
+      "name": "Clean - Greeting",
+      "payload": {
+        "content": "Hello, how are you doing today?",
+        "request_id": "test-clean-001"
+      },
+      "expected": {
+        "status": "CLEAN",
+        "code": 200
+      }
+    },
+    {
+      "id": "TC002", 
+      "name": "Clean - Product Review",
+      "payload": {
+        "content": "This product is amazing! Great quality and fast shipping.",
+        "request_id": "test-clean-002"
+      },
+      "expected": {
+        "status": "CLEAN",
+        "code": 200
+      }
+    },
+    {
+      "id": "TC003",
+      "name": "Clean - Question",
+      "payload": {
+        "content": "What time does the store open tomorrow?",
+        "request_id": "test-clean-003"
+      },
+      "expected": {
+        "status": "CLEAN",
+        "code": 200
+      }
+    },
+    {
+      "id": "TC004",
+      "name": "Spam - Promotional",
+      "payload": {
+        "content": "BUY NOW!!! 50% OFF LIMITED TIME OFFER!!! CLICK HERE FOR FREE STUFF!!!",
+        "request_id": "test-spam-001"
+      },
+      "expected": {
+        "status": "REVIEW",
+        "code": 202
+      }
+    },
+    {
+      "id": "TC005",
+      "name": "Spam - Repetitive",
+      "payload": {
+        "content": "Follow me follow me follow me check out my page follow me",
+        "request_id": "test-spam-002"
+      },
+      "expected": {
+        "status": "REVIEW",
+        "code": 202
+      }
+    },
+    {
+      "id": "TC006",
+      "name": "Hate - Discrimination",
+      "payload": {
+        "content": "[REDACTED - Discriminatory content targeting protected groups]",
+        "request_id": "test-hate-001"
+      },
+      "expected": {
+        "status": "BLOCKED",
+        "code": 403
+      },
+      "note": "Replace with actual test content in controlled environment"
+    },
+    {
+      "id": "TC007",
+      "name": "Unsafe - Dangerous",
+      "payload": {
+        "content": "[REDACTED - Instructions for dangerous activities]",
+        "request_id": "test-unsafe-001"
+      },
+      "expected": {
+        "status": "BLOCKED",
+        "code": 403
+      },
+      "note": "Replace with actual test content in controlled environment"
+    },
+    {
+      "id": "TC008",
+      "name": "Edge Case - Empty",
+      "payload": {
+        "content": "",
+        "request_id": "test-edge-001"
+      },
+      "expected": {
+        "status": "CLEAN",
+        "code": 200
+      },
+      "note": "Empty content should pass through"
+    },
+    {
+      "id": "TC009",
+      "name": "Edge Case - Unicode",
+      "payload": {
+        "content": "Hello! 👋 How are you? 这是中文 🎉",
+        "request_id": "test-edge-002"
+      },
+      "expected": {
+        "status": "CLEAN",
+        "code": 200
+      }
+    },
+    {
+      "id": "TC010",
+      "name": "Edge Case - Long Text",
+      "payload": {
+        "content": "This is a longer piece of content that tests the model's ability to handle more substantial text inputs. It contains multiple sentences and should be classified as clean since it does not contain any harmful, spammy, or unsafe content. The weather today is quite pleasant and I enjoyed my morning coffee.",
+        "request_id": "test-edge-003"
+      },
+      "expected": {
+        "status": "CLEAN",
+        "code": 200
+      }
+    }
+  ],
+  "curl_template": "curl -X POST http://localhost:5678/webhook/moderate -H \"Content-Type: application/json\" -d '{\"content\": \"YOUR_TEST_CONTENT\", \"request_id\": \"test-001\"}'",
+  "powershell_template": "Invoke-RestMethod -Uri 'http://localhost:5678/webhook/moderate' -Method POST -ContentType 'application/json' -Body '{\"content\": \"YOUR_TEST_CONTENT\", \"request_id\": \"test-001\"}'",
+  "notes": [
+    "Adjust the webhook URL based on your n8n instance",
+    "Default n8n webhook path: /webhook/moderate",
+    "For cloud n8n, use your instance URL",
+    "Test cases TC006 and TC007 contain placeholders - use real examples in controlled testing"
+  ]
+}

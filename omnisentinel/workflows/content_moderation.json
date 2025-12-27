@@ -1,0 +1,469 @@
+{
+  "name": "OmniSentinel - Content Moderation Gateway",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "moderate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-input",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "omnisentinel-intake"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "prompt-assembly",
+              "name": "analysis_prompt",
+              "value": "=Classify this text as 'hate', 'spam', 'unsafe', or 'clean'. Only respond with one word.\n\nText: {{ $json.body.content }}\n\nClassification:",
+              "type": "string"
+            },
+            {
+              "id": "original-content",
+              "name": "original_content",
+              "value": "={{ $json.body.content }}",
+              "type": "string"
+            },
+            {
+              "id": "request-id",
+              "name": "request_id",
+              "value": "={{ $json.body.request_id || $now.toMillis() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prep-prompt",
+      "name": "Prepare Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://router.huggingface.co/hf-inference/models/google/flan-t5-small",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ inputs: $json.analysis_prompt }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "hf-inference",
+      "name": "HF Inference API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "HuggingFace API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "extract-result",
+              "name": "classification",
+              "value": "={{ $json[0]?.generated_text?.toLowerCase().trim() || 'error' }}",
+              "type": "string"
+            },
+            {
+              "id": "pass-content",
+              "name": "original_content",
+              "value": "={{ $('Prepare Prompt').item.json.original_content }}",
+              "type": "string"
+            },
+            {
+              "id": "pass-request-id",
+              "name": "request_id",
+              "value": "={{ $('Prepare Prompt').item.json.request_id }}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp",
+              "name": "processed_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "parse-response",
+      "name": "Parse HF Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "hate-check",
+              "leftValue": "={{ $json.classification }}",
+              "rightValue": "hate",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "unsafe-check",
+              "leftValue": "={{ $json.classification }}",
+              "rightValue": "unsafe",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "gate-blocked",
+      "name": "IF: Blocked Content",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "spam-check",
+              "leftValue": "={{ $json.classification }}",
+              "rightValue": "spam",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "gate-review",
+      "name": "IF: Needs Review",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "blocked-status",
+              "name": "status",
+              "value": "BLOCKED",
+              "type": "string"
+            },
+            {
+              "id": "blocked-reason",
+              "name": "reason",
+              "value": "={{ $json.classification }}",
+              "type": "string"
+            },
+            {
+              "id": "blocked-action",
+              "name": "action",
+              "value": "Content rejected - violates community guidelines",
+              "type": "string"
+            },
+            {
+              "id": "blocked-code",
+              "name": "code",
+              "value": "403",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "result-blocked",
+      "name": "Result: BLOCKED",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1340, 100]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "review-status",
+              "name": "status",
+              "value": "REVIEW",
+              "type": "string"
+            },
+            {
+              "id": "review-reason",
+              "name": "reason",
+              "value": "={{ $json.classification }}",
+              "type": "string"
+            },
+            {
+              "id": "review-action",
+              "name": "action",
+              "value": "Content flagged for human review",
+              "type": "string"
+            },
+            {
+              "id": "review-code",
+              "name": "code",
+              "value": "202",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "result-review",
+      "name": "Result: REVIEW",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1340, 340]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "clean-status",
+              "name": "status",
+              "value": "CLEAN",
+              "type": "string"
+            },
+            {
+              "id": "clean-reason",
+              "name": "reason",
+              "value": "={{ $json.classification }}",
+              "type": "string"
+            },
+            {
+              "id": "clean-action",
+              "name": "action",
+              "value": "Content approved - no issues detected",
+              "type": "string"
+            },
+            {
+              "id": "clean-code",
+              "name": "code",
+              "value": "200",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "result-clean",
+      "name": "Result: CLEAN",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1340, 500]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ request_id: $('Prepare Prompt').item.json.request_id, status: $json.status, classification: $json.reason, action: $json.action, processed_at: $('Parse HF Response').item.json.processed_at }) }}",
+        "options": {
+          "responseCode": "={{ $json.code }}"
+        }
+      },
+      "id": "response-output",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1780, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Prompt": {
+      "main": [
+        [
+          {
+            "node": "HF Inference API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HF Inference API": {
+      "main": [
+        [
+          {
+            "node": "Parse HF Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse HF Response": {
+      "main": [
+        [
+          {
+            "node": "IF: Blocked Content",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF: Needs Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Blocked Content": {
+      "main": [
+        [
+          {
+            "node": "Result: BLOCKED",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Result: CLEAN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Needs Review": {
+      "main": [
+        [
+          {
+            "node": "Result: REVIEW",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Result: BLOCKED": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result: REVIEW": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result: CLEAN": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "OmniSentinel",
+      "createdAt": "2025-12-27T00:00:00.000Z",
+      "updatedAt": "2025-12-27T00:00:00.000Z"
+    },
+    {
+      "name": "Content Moderation",
+      "createdAt": "2025-12-27T00:00:00.000Z",
+      "updatedAt": "2025-12-27T00:00:00.000Z"
+    }
+  ],
+  "triggerCount": 1,
+  "meta": {
+    "instanceId": "omnisentinel-v1"
+  }
+}
